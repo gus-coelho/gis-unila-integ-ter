@@ -287,11 +287,11 @@ td video {
 }
 
 
-.ol-geocoder.gcd-gl-container {
+.ol-geocoder {
     position: relative !important;
     float: left !important;
-    top: unset;
-    left: unset;
+    top: unset!important;
+    left: unset !important;
 	margin-top: 8px;
     margin-left: 8px;
     clear: both;
@@ -404,6 +404,7 @@ td video {
 	margin: unset;
 	display: flex;
 	list-style: none;
+	gap: 8px;
 	} 	
 .bottom-attribution > li {
 	padding-left: 8px !important;

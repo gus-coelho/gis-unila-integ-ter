@@ -4,12 +4,12 @@ var map = new ol.Map({
     renderer: 'canvas',
     layers: layersList,
     view: new ol.View({
-         maxZoom: 28, minZoom: 1
+         maxZoom: 22, minZoom: 1
     })
 });
 
 //initial view - epsg:3857 coordinates if not "Match project CRS"
-map.getView().fit([-6076728.288970, -2934607.611005, -6076277.225645, -2934240.539204], map.getSize());
+map.getView().fit([-6077208.667652, -2934998.176017, -6075713.958180, -2933872.648896], map.getSize());
 
 ////small screen definition
     var hasTouchScreen = map.getViewport().classList.contains('ol-touch');
@@ -69,8 +69,7 @@ closer.onclick = function() {
     return false;
 };
 var overlayPopup = new ol.Overlay({
-    element: container,
-	autoPan: true
+    element: container
 });
 map.addOverlay(overlayPopup)
     
@@ -119,7 +118,7 @@ var doHover = false;
 function createPopupField(currentFeature, currentFeatureKeys, layer) {
     var popupText = '';
     for (var i = 0; i < currentFeatureKeys.length; i++) {
-        if (currentFeatureKeys[i] != 'geometry' && currentFeatureKeys[i] != 'layerObject' && currentFeatureKeys[i] != 'idO') {
+        if (currentFeatureKeys[i] != 'geometry') {
             var popupField = '';
             if (layer.get('fieldLabels')[currentFeatureKeys[i]] == "hidden field") {
                 continue;
@@ -170,11 +169,12 @@ function onPointerMove(evt) {
     }
     var pixel = map.getEventPixel(evt.originalEvent);
     var coord = evt.coordinate;
+    var popupField;
     var currentFeature;
     var currentLayer;
     var currentFeatureKeys;
     var clusteredFeatures;
-    var clusterLength;
+    var clusterLenght;
     var popupText = '<ul>';
     map.forEachFeatureAtPixel(pixel, function(feature, layer) {
         if (layer && feature instanceof ol.Feature && (layer.get("interactive") || layer.get("interactive") == undefined)) {
@@ -188,8 +188,9 @@ function onPointerMove(evt) {
             currentLayer = layer;
             clusteredFeatures = feature.get("features");
             if (clusteredFeatures) {
-				clusterLength = clusteredFeatures.length;
+				clusterLenght = clusteredFeatures.length;
 			}
+            var clusterFeature;
             if (typeof clusteredFeatures !== "undefined") {
                 if (doPopup) {
                     for(var n=0; n<clusteredFeatures.length; n++) {
@@ -238,7 +239,7 @@ function onPointerMove(evt) {
 					if (typeof clusteredFeatures == "undefined") {
 						radius = featureStyle.getImage().getRadius();
 					} else {
-						radius = parseFloat(featureStyle.split('radius')[1].split(' ')[1]) + clusterLength;
+						radius = parseFloat(featureStyle.split('radius')[1].split(' ')[1]) + clusterLenght;
 					}
 
                     highlightStyle = new ol.style.Style({
@@ -277,9 +278,9 @@ function onPointerMove(evt) {
 
     if (doHover) {
         if (popupText) {
-			content.innerHTML = popupText;
-            container.style.display = 'block';
             overlayPopup.setPosition(coord);
+            content.innerHTML = popupText;
+            container.style.display = 'block';        
         } else {
             container.style.display = 'none';
             closer.blur();
@@ -295,9 +296,9 @@ var featuresPopupActive = false;
 
 function updatePopup() {
     if (popupContent) {
+        overlayPopup.setPosition(popupCoord);
         content.innerHTML = popupContent;
         container.style.display = 'block';
-		overlayPopup.setPosition(popupCoord);
     } else {
         container.style.display = 'none';
         closer.blur();
@@ -313,6 +314,7 @@ function onSingleClickFeatures(evt) {
     }
     var pixel = map.getEventPixel(evt.originalEvent);
     var coord = evt.coordinate;
+    var popupField;
     var currentFeature;
     var currentFeatureKeys;
     var clusteredFeatures;
@@ -365,9 +367,9 @@ function onSingleClickWMS(evt) {
     if (doHover || sketch) {
         return;
     }
-    if (!featuresPopupActive) {
-        popupContent = '';
-    }
+	if (!featuresPopupActive) {
+		popupContent = '';
+	}
     var coord = evt.coordinate;
     var viewProjection = map.getView().getProjection();
     var viewResolution = map.getView().getResolution();
@@ -378,12 +380,12 @@ function onSingleClickWMS(evt) {
                 evt.coordinate, viewResolution, viewProjection, {
                     'INFO_FORMAT': 'text/html',
                 });
-            if (url) {
-                const wmsTitle = wms_layers[i][0].get('popuplayertitle');
+            if (url) {				
+                const wmsTitle = wms_layers[i][0].get('popuplayertitle');					
                 var ldsRoller = '<div id="lds-roller"><img class="lds-roller-img" style="height: 25px; width: 25px;"></img></div>';
-
+				
                 popupCoord = coord;
-                popupContent += ldsRoller;
+				popupContent += ldsRoller;
                 updatePopup();
 
                 var timeoutPromise = new Promise((resolve, reject) => {
@@ -392,44 +394,30 @@ function onSingleClickWMS(evt) {
                     }, 5000); // (5 second)
                 });
 
-                // Function to try fetch with different option
-                function tryFetch(urls) {
-                    if (urls.length === 0) {
-                        return Promise.reject(new Error('All fetch attempts failed'));
+                Promise.race([
+                    fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url)),
+                    timeoutPromise
+                ])
+                .then((response) => {
+                    if (response.ok) {
+                        return response.text();
                     }
-                    return fetch(urls[0])
-                        .then((response) => {
-                            if (response.ok) {
-                                return response.text();
-                            } else {
-                                throw new Error('Fetch failed');
-                            }
-                        })
-                        .catch(() => tryFetch(urls.slice(1))); // Try next URL
-                }
-
-                // List of URLs to try
-                // The first URL is the original, the second is the encoded version, and the third is the proxy
-                const urlsToTry = [
-                    url,
-                    encodeURIComponent(url),
-                    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
-                ];
-
-                Promise.race([tryFetch(urlsToTry), timeoutPromise])
-                    .then((html) => {
-                        if (html.indexOf('<table') !== -1) {
-                            popupContent += '<a><b>' + wmsTitle + '</b></a>';
-                            popupContent += html + '<p></p>';
-                            updatePopup();
-                        }
-                    })
-                    .finally(() => {
-                        setTimeout(() => {
-                            var loaderIcon = document.querySelector('#lds-roller');
-                            if (loaderIcon) loaderIcon.remove();
-                        }, 500); // (0.5 second)
-                    });
+                })
+                .then((html) => {
+                    if (html.indexOf('<table') !== -1) {
+                        popupContent += '<a><b>' + wmsTitle + '</b></a>';
+                        popupContent += html + '<p></p>';
+                        updatePopup();
+                    }
+                })
+                // .catch((error) => {
+				// })
+                .finally(() => {
+                    setTimeout(() => {
+                        var loaderIcon = document.querySelector('#lds-roller');
+						loaderIcon.remove();
+                    }, 500); // (0.5 second)	
+                });
             }
         }
     }
@@ -445,6 +433,17 @@ var bottomRightContainerDiv = document.getElementById('bottom-right-container')
 
 //title
 
+var Title = new ol.control.Control({
+    element: (() => {
+        var titleElement = document.createElement('div');
+        titleElement.className = 'bottom-left-title ol-control';
+        titleElement.innerHTML = '<h2 class="project-title">UNILA Integração</h2>';
+        return titleElement;
+    })(),
+    target: 'bottom-left-container'
+});
+map.addControl(Title)
+    
 //abstract
 
 
@@ -464,12 +463,11 @@ var bottomRightContainerDiv = document.getElementById('bottom-right-container')
 //layer search
 
 var searchLayer = new SearchLayer({
-    layer: lyr_CampusIntegraoTrreo_1,
+    layer: lyr_Trreo_1,
     colName: 'integ-ter_DESCRICAO',
     zoom: 10,
     collapsed: true,
-    map: map,
-    maxResults: 10,
+    map: map
 });
 map.addControl(searchLayer);
 document.getElementsByClassName('search-layer')[0].getElementsByTagName('button')[0].className += ' fa fa-binoculars';
@@ -480,6 +478,23 @@ document.getElementsByClassName('search-layer-input-search')[0].placeholder = 'S
 
 
 //layerswitcher
+
+var layerSwitcher = new ol.control.LayerSwitcher({
+    activationMode: 'click',
+	startActive: true,
+	tipLabel: "Layers",
+    target: 'top-right-container',
+	collapseLabel: '»',
+	collapseTipLabel: 'Close'
+    });
+map.addControl(layerSwitcher);
+if (hasTouchScreen || isSmallScreen) {
+	document.addEventListener('DOMContentLoaded', function() {
+		setTimeout(function() {
+			layerSwitcher.hidePanel();
+		}, 500);
+	});	
+}
 
 
 
@@ -496,31 +511,26 @@ map.addControl(bottomAttribution);
 
 var attributionList = document.createElement('li');
 attributionList.innerHTML = `
-	<a href="https://github.com/qgis2web/qgis2web">qgis2web</a> &middot;
+	<a href="https://github.com/tomchadwin/qgis2web">qgis2web</a> &middot;
 	<a href="https://openlayers.org/">OpenLayers</a> &middot;
 	<a href="https://qgis.org/">QGIS</a>	
 `;
-var bottomAttributionUl = bottomAttribution.element.querySelector('ul');
-if (bottomAttributionUl) {
-  bottomAttribution.element.insertBefore(attributionList, bottomAttributionUl);
-}
+bottomAttribution.element.appendChild(attributionList);
 
 
 // Disable "popup on hover" or "highlight on hover" if ol-control mouseover
-var preDoHover = doHover;
-var preDoHighlight = doHighlight;
-var isPopupAllActive = false;
 document.addEventListener('DOMContentLoaded', function() {
+    var preDoHover = doHover;
+	var preDoHighlight = doHighlight;
 	if (doHover || doHighlight) {
 		var controlElements = document.getElementsByClassName('ol-control');
 		for (var i = 0; i < controlElements.length; i++) {
-			controlElements[i].addEventListener('mouseover', function() { 
-				doHover = false;
-				doHighlight = false;
+			controlElements[i].addEventListener('mouseover', function() {
+				if (doHover) { doHover = false; }
+				if (doHighlight) { doHighlight = false; }
 			});
 			controlElements[i].addEventListener('mouseout', function() {
 				doHover = preDoHover;
-				if (isPopupAllActive) { return }
 				doHighlight = preDoHighlight;
 			});
 		}
@@ -535,17 +545,19 @@ document.addEventListener('DOMContentLoaded', function() {
         topLeftContainerDiv.appendChild(zoomControl);
     }
     //geolocate
-    if (typeof geolocateControl !== 'undefined') {
+    var geolocateControl = document.getElementsByClassName('geolocate')[0];
+    if (geolocateControl) {
         topLeftContainerDiv.appendChild(geolocateControl);
     }
     //measure
-    if (typeof measureControl !== 'undefined') {
+    var measureControl = document.getElementsByClassName('measure-control')[0];
+    if (measureControl) {
         topLeftContainerDiv.appendChild(measureControl);
     }
     //geocoder
-    var searchbar = document.getElementsByClassName('photon-geocoder-autocomplete ol-unselectable ol-control')[0];
-    if (searchbar) {
-        topLeftContainerDiv.appendChild(searchbar);
+    var geocoderControl = document.getElementsByClassName('ol-geocoder')[0];
+    if (geocoderControl) {
+        topLeftContainerDiv.appendChild(geocoderControl);
     }
     //search layer
     var searchLayerControl = document.getElementsByClassName('search-layer')[0];
